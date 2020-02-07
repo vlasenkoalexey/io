@@ -17,12 +17,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+print('!!!!!!!!!!!!!!!!                  importing pywrap_tensorflow')
+from tensorflow.python import pywrap_tensorflow
+#from tensorflow.python._pywrap_tfe import *
+
 import os
 import ctypes
 import sys
 import inspect
 
 import tensorflow as tf
+print(tf.sysconfig.get_include())
 
 def _load_library(filename, lib="op"):
   """_load_library"""
