@@ -125,6 +125,8 @@ class CPUFeatureCheck {
     CheckIfFeatureUnused(CPUFeature::FMA, "FMA", missing_instructions);
 #endif  // __FMA__
     if (!missing_instructions.empty()) {
+      std::cout << "testing output cout";
+      LOG(INFO) << "testing output log";
       LOG(INFO) << "Your CPU supports instructions that this TensorFlow IO "
                 << "binary was not compiled to use:" << missing_instructions;
     }

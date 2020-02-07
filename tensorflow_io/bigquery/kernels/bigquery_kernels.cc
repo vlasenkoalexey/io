@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstring>
 #include <iostream>
 #include <string>
+//#include <stdio>
 
 #include "api/Compiler.hh"
 #include "api/DataFile.hh"
@@ -40,6 +41,7 @@ static constexpr int kMaxReceiveMessageSize = 1 << 24;  // 16 MBytes
 class BigQueryClientOp : public OpKernel {
  public:
   explicit BigQueryClientOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    std::cout << "BigQueryClientOp ctor";
   }
 
   ~BigQueryClientOp() override {
@@ -147,7 +149,7 @@ class BigQueryReadSessionOp : public OpKernel {
          ->mutable_selected_fields() = {selected_fields_.begin(),
                                         selected_fields_.end()};
     createReadSessionRequest.mutable_read_options()->set_row_restriction(
-        row_restriction_);                                        
+        row_restriction_);
     createReadSessionRequest.set_requested_streams(requested_streams_);
     createReadSessionRequest.set_sharding_strategy(apiv1beta1::ShardingStrategy::BALANCED);
     createReadSessionRequest.set_format(apiv1beta1::DataFormat::AVRO);
@@ -182,14 +184,14 @@ class BigQueryReadSessionOp : public OpKernel {
         "streams",
         {readSessionResponse->streams_size()},
         &streams_t));
-    auto streams_vec = streams_t->vec<string>();
+    auto streams_vec = streams_t->vec<tensorflow::tstring>();
     for (int i = 0; i < readSessionResponse->streams_size(); i++) {
       streams_vec(i) = readSessionResponse->streams(i).name();
     }
     Tensor* avro_schema_t = nullptr;
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output("avro_schema", {}, &avro_schema_t));
-    avro_schema_t->scalar<string>()() =
+    avro_schema_t->scalar<tensorflow::tstring>()() =
         readSessionResponse->avro_schema().schema();
   }
 

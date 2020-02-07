@@ -212,11 +212,11 @@ class ToBigtableOp : public AsyncOpKernel {
       std::vector<string> column_families;
       column_families.reserve(column_families_tensor->NumElements());
       std::vector<string> columns;
-      columns.reserve(column_families_tensor->NumElements());
-      for (uint64 i = 0; i < column_families_tensor->NumElements(); ++i) {
-        column_families.push_back(column_families_tensor->flat<string>()(i));
-        columns.push_back(columns_tensor->flat<string>()(i));
-      }
+      // columns.reserve(column_families_tensor->NumElements());
+      // for (uint64 i = 0; i < column_families_tensor->NumElements(); ++i) {
+      //   column_families.push_back(column_families_tensor->flat<string>()(i));
+      //   columns.push_back(columns_tensor->flat<string>()(i));
+      // }
 
       DatasetBase* dataset;
       OP_REQUIRES_OK_ASYNC(
@@ -317,24 +317,24 @@ class ToBigtableOp : public AsyncOpKernel {
       return errors::InvalidArgument(
           "Iterator produced a set of Tensors shorter than expected");
     }
-    ::google::cloud::bigtable::SingleRowMutation mutation(
-        std::move(tensors[0].scalar<string>()()));
-    std::chrono::milliseconds timestamp(timestamp_int);
-    for (size_t i = 1; i < tensors.size(); ++i) {
-      if (!TensorShapeUtils::IsScalar(tensors[i].shape())) {
-        return errors::Internal("Output tensor ", i, " was not a scalar");
-      }
-      if (timestamp_int == -1) {
-        mutation.emplace_back(::google::cloud::bigtable::SetCell(
-            column_families[i - 1], columns[i - 1],
-            std::move(tensors[i].scalar<string>()())));
-      } else {
-        mutation.emplace_back(::google::cloud::bigtable::SetCell(
-            column_families[i - 1], columns[i - 1], timestamp,
-            std::move(tensors[i].scalar<string>()())));
-      }
-    }
-    bulk_mutation->emplace_back(std::move(mutation));
+    // ::google::cloud::bigtable::SingleRowMutation mutation(
+    //     std::move(tensors[0].scalar<string>()()));
+    // std::chrono::milliseconds timestamp(timestamp_int);
+    // for (size_t i = 1; i < tensors.size(); ++i) {
+    //   if (!TensorShapeUtils::IsScalar(tensors[i].shape())) {
+    //     return errors::Internal("Output tensor ", i, " was not a scalar");
+    //   }
+    //   if (timestamp_int == -1) {
+    //     mutation.emplace_back(::google::cloud::bigtable::SetCell(
+    //         column_families[i - 1], columns[i - 1],
+    //         std::move(tensors[i].scalar<string>()())));
+    //   } else {
+    //     mutation.emplace_back(::google::cloud::bigtable::SetCell(
+    //         column_families[i - 1], columns[i - 1], timestamp,
+    //         std::move(tensors[i].scalar<string>()())));
+    //   }
+    // }
+    // bulk_mutation->emplace_back(std::move(mutation));
     return Status::OK();
   }
 

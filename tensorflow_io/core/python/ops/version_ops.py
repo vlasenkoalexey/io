@@ -14,5 +14,13 @@
 # ==============================================================================
 """version_ops"""
 
-package = 'tensorflow>=2.1.0,<2.2.0'
-version = '0.12.0'
+#2.2.0.dev20200205
+#package = 'tf-nightly==2.2.0.dev20200205' # does not work
+#package = 'tf-nightly==2.2.0.dev20200128'  # does not work
+
+# works
+package = 'tf-nightly==2.2.0.dev20200123'
+#package = 'tf-nightly==2.2.0.dev20200118'  # works
+#package = 'tf-nightly==2.2.0.dev20200111' # works
+
+version = '0.02.05'

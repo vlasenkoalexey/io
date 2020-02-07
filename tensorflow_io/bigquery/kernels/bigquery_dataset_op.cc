@@ -32,11 +32,11 @@ class BigQueryDatasetOp : public DatasetOpKernel {
   using DatasetOpKernel::DatasetOpKernel;
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
-    string stream;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, "stream", &stream));
-    string avro_schema;
+    tensorflow::tstring stream;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<tensorflow::tstring>(ctx, "stream", &stream));
+    tensorflow::tstring avro_schema;
     OP_REQUIRES_OK(
-        ctx, ParseScalarArgument<string>(ctx, "avro_schema", &avro_schema));
+        ctx, ParseScalarArgument<tensorflow::tstring>(ctx, "avro_schema", &avro_schema));
 
     BigQueryClientResource* client_resource;
     OP_REQUIRES_OK(
