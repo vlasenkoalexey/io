@@ -40,10 +40,7 @@ cc_library(
     deps = [
         ":bigquery_lib_cc",
         "@avro",
-        #"@com_github_grpc_grpc//:grpc++",
-        "@com_github_grpc_grpc//:grpc++_codegen_base",
-        "@com_github_grpc_grpc//:grpc++_public_hdrs",
-        "@com_github_grpc_grpc//:grpc_secure",
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_googleapis//google/cloud/bigquery/storage/v1beta1:bigquerystorage_cc_grpc",
         "@local_config_tf//:libtensorflow_framework",
         "@local_config_tf//:tf_header_lib",
@@ -60,10 +57,7 @@ cc_library(
     linkstatic = True,
     deps = [
         "@avro",
-#        "@com_github_grpc_grpc//:grpc++",
-        "@com_github_grpc_grpc//:grpc++_codegen_base",
-        "@com_github_grpc_grpc//:grpc++_public_hdrs",
-        "@com_github_grpc_grpc//:grpc_secure",
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_googleapis//google/cloud/bigquery/storage/v1beta1:bigquerystorage_cc_grpc",
         "@local_config_tf//:libtensorflow_framework",
         "@local_config_tf//:tf_header_lib",
