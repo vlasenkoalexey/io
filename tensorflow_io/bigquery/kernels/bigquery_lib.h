@@ -39,6 +39,9 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 #include "tensorflow_io/arrow/kernels/arrow_util.h"
 
+#include <chrono>  // NOLINT(build/c++11)
+#include <thread>
+
 namespace tensorflow {
 
 namespace apiv1beta1 = ::google::cloud::bigquery::storage::v1beta1;
@@ -70,7 +73,7 @@ class BigQueryClientResource : public ResourceBase {
           // To prevent gRPC from reusing channel
           args.SetString("read_stream", read_stream);
           auto channel = ::grpc::CreateCustomChannel(server_name, creds, args);
-          VLOG(3) << "Creating GRPC channel";
+          LOG(WARNING) << "Creating GRPC channel for read_stream: " << read_stream;
           return absl::make_unique<apiv1beta1::BigQueryStorage::Stub>(channel);
         }) {}
 
@@ -105,22 +108,58 @@ class BigQueryReaderDatasetIteratorBase : public DatasetIterator<Dataset> {
   Status GetNextInternal(IteratorContext *ctx, std::vector<Tensor> *out_tensors,
                          bool *end_of_sequence) override {
     mutex_lock l(mu_);
+        const auto get_next_internal_start = std::chrono::high_resolution_clock::now();
     VLOG(3)
         << "calling BigQueryReaderDatasetIteratorBase.GetNextInternal() index: "
         << current_row_index_ << " stream: " << this->dataset()->stream();
+
+    if (total_row_index % 10000 == 0)
+    {
+        LOG(WARNING)
+          << ">> calling BigQueryReaderDatasetIteratorBase.GetNextInternal() index: "
+          << total_row_index << " stream: " << this->dataset()->stream();
+        LOG(WARNING) << "Thread id:" << std::this_thread::get_id();
+        LOG(WARNING) << "avg avro_decode_microseconds per row:" << this->avro_decode_microseconds / total_row_index;
+        LOG(WARNING) << "avg avro_init_microseconds per grpc_reader_read_count:" << this->avro_init_microseconds / grpc_reader_read_count;
+        LOG(WARNING) << "avg grpc_reader_read_microseconds per grpc reader read:" << this->grpc_reader_read_microseconds / grpc_reader_read_count;
+        LOG(WARNING) << "avg grpc_read_row_microseconds per grpc read:" << this->grpc_read_row_microseconds / grpc_read_row_count;
+        LOG(WARNING) << "avg grpc_read_row_microseconds + grpc_reader_read_microseconds per grpc call:"
+          << (this->grpc_read_row_microseconds + this->grpc_reader_read_microseconds)  / (grpc_read_row_count + grpc_reader_read_count);
+        LOG(WARNING) << "avg get_next_internal_microseconds per call:" << this->get_next_internal_microseconds / total_row_index;
+
+        LOG(WARNING) << "total_row_index:" << total_row_index;
+        LOG(WARNING) << "grpc_reader_read_count:" << grpc_reader_read_count;
+        LOG(WARNING) << "grpc_read_row_count:" << grpc_read_row_count;
+
+        LOG(WARNING) << "total avro_decode_seconds:" << this->avro_decode_microseconds / 1e6;
+        LOG(WARNING) << "total grpc_reader_read_seconds:" << this->grpc_reader_read_microseconds / 1e6;
+        LOG(WARNING) << "total grpc_read_row_seconds:" << this->grpc_read_row_microseconds / 1e6;
+        LOG(WARNING) << "total get_next_internal_microseconds:" << this->get_next_internal_microseconds / 1e6;
+    }
+
     *end_of_sequence = false;
 
     TF_RETURN_IF_ERROR(EnsureReaderInitialized());
     TF_RETURN_IF_ERROR(EnsureHasRow(end_of_sequence));
     if (*end_of_sequence) {
-      VLOG(3) << "end of sequence";
+      LOG(WARNING) << "end of sequence";
+
       return Status::OK();
     }
 
+    const auto avro_decode_start = std::chrono::high_resolution_clock::now();
     auto status =
         ReadRecord(ctx, out_tensors, this->dataset()->selected_fields(),
                    this->dataset()->output_types());
+    const auto avro_decode_end = std::chrono::high_resolution_clock::now();
+    this->avro_decode_microseconds += std::chrono::duration_cast<std::chrono::microseconds>( avro_decode_end - avro_decode_start ).count();
+
     current_row_index_++;
+    total_row_index++;
+
+    const auto get_next_internal_end = std::chrono::high_resolution_clock::now();
+    this->get_next_internal_microseconds += std::chrono::duration_cast<std::chrono::microseconds>( get_next_internal_end - get_next_internal_start ).count();
+
     return status;
   }
 
@@ -160,10 +199,15 @@ class BigQueryReaderDatasetIteratorBase : public DatasetIterator<Dataset> {
 
     VLOG(3) << "getting reader, stream: "
             << readRowsRequest.read_position().stream().DebugString();
+
+    const auto grpc_read_start = std::chrono::high_resolution_clock::now();
     reader_ = this->dataset()
                   ->client_resource()
                   ->GetStub(readRowsRequest.read_position().stream().name())
                   ->ReadRows(read_rows_context_.get(), readRowsRequest);
+    this->grpc_read_row_count++;
+    const auto grpc_read_end = std::chrono::high_resolution_clock::now();
+    this->grpc_read_row_microseconds += std::chrono::duration_cast<std::chrono::microseconds>( grpc_read_end - grpc_read_start ).count();
 
     return Status::OK();
   }
@@ -179,6 +223,15 @@ class BigQueryReaderDatasetIteratorBase : public DatasetIterator<Dataset> {
   std::unique_ptr<::grpc::ClientReader<apiv1beta1::ReadRowsResponse>> reader_
       TF_GUARDED_BY(mu_);
   std::unique_ptr<apiv1beta1::ReadRowsResponse> response_ TF_GUARDED_BY(mu_);
+
+  int grpc_read_row_count = 0;
+  int total_row_index = 0;
+  int grpc_reader_read_count = 0;
+  double grpc_read_row_microseconds = 0;
+  double avro_init_microseconds = 0;
+  double avro_decode_microseconds = 0;
+  double grpc_reader_read_microseconds = 0;
+  double get_next_internal_microseconds = 0;
 };
 
 // BigQuery reader for Arrow serialized data.
@@ -304,13 +357,22 @@ class BigQueryReaderAvroDatasetIterator
     }
 
     this->response_ = absl::make_unique<apiv1beta1::ReadRowsResponse>();
+
+    const auto reader_read_start = std::chrono::high_resolution_clock::now();
     VLOG(3) << "calling read";
     if (!this->reader_->Read(this->response_.get())) {
       VLOG(3) << "no data";
       *end_of_sequence = true;
       return GrpcStatusToTfStatus(this->reader_->Finish());
     }
+    const auto reader_read_end = std::chrono::high_resolution_clock::now();
+    this->grpc_reader_read_microseconds += std::chrono::duration_cast<std::chrono::microseconds>(reader_read_end - reader_read_start).count();
+    this->grpc_reader_read_count++;
+
+
     this->current_row_index_ = 0;
+    const auto avro_init_start = std::chrono::high_resolution_clock::now();
+
     this->decoder_ = avro::binaryDecoder();
     memory_input_stream_ = avro::memoryInputStream(
         reinterpret_cast<const uint8_t *>(
@@ -319,6 +381,10 @@ class BigQueryReaderAvroDatasetIterator
     this->decoder_->init(*memory_input_stream_);
     this->datum_ =
         absl::make_unique<avro::GenericDatum>(*this->dataset()->avro_schema());
+
+    const auto avro_init_end = std::chrono::high_resolution_clock::now();
+    this->avro_init_microseconds += std::chrono::duration_cast<std::chrono::microseconds>( avro_init_end - avro_init_start ).count();
+
     return Status::OK();
   }
 

@@ -254,6 +254,7 @@ class BigQueryReadSession:
     Raises:
       ValueError: If the configured probability is unexpected.
     """
+        print('reading stream %s' % stream)
         return _BigQueryDataset(
             self._client_resource,
             self._selected_fields,
@@ -307,6 +308,7 @@ class BigQueryReadSession:
       ValueError: If the configured probability is unexpected.
 
     """
+        print('parallel_read_rows, streams: %s' % str(self._streams))
         if cycle_length is None:
             cycle_length = self._requested_streams
         streams_ds = dataset_ops.Dataset.from_tensor_slices(self._streams)
@@ -318,6 +320,9 @@ class BigQueryReadSession:
             option.experimental_deterministic = True
             streams_ds = streams_ds.with_options(option)
 
+        print('cycle_length %d' % cycle_length)
+        print('block_length %d' % block_length)
+        print('num_parallel_calls %d' % num_parallel_calls)
         return streams_ds.interleave(
             map_func=self.read_rows,
             cycle_length=cycle_length,
