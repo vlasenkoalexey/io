@@ -119,8 +119,8 @@ class BigQueryReaderDatasetIteratorBase : public DatasetIterator<Dataset> {
           << ">> calling BigQueryReaderDatasetIteratorBase.GetNextInternal() index: "
           << total_row_index << " stream: " << this->dataset()->stream();
         LOG(WARNING) << "Thread id:" << std::this_thread::get_id();
-        LOG(WARNING) << "avg avro_decode_microseconds per row:" << this->avro_decode_microseconds / total_row_index;
-        LOG(WARNING) << "avg avro_init_microseconds per grpc_reader_read_count:" << this->avro_init_microseconds / grpc_reader_read_count;
+        LOG(WARNING) << "avg row_decode_microseconds per row:" << this->row_decode_microseconds / total_row_index;
+        LOG(WARNING) << "avg reader_init_microseconds per grpc_reader_read_count:" << this->reader_init_microseconds / grpc_reader_read_count;
         LOG(WARNING) << "avg grpc_reader_read_microseconds per grpc reader read:" << this->grpc_reader_read_microseconds / grpc_reader_read_count;
         LOG(WARNING) << "avg grpc_read_row_microseconds per grpc read:" << this->grpc_read_row_microseconds / grpc_read_row_count;
         LOG(WARNING) << "avg grpc_read_row_microseconds + grpc_reader_read_microseconds per grpc call:"
@@ -131,10 +131,10 @@ class BigQueryReaderDatasetIteratorBase : public DatasetIterator<Dataset> {
         LOG(WARNING) << "grpc_reader_read_count:" << grpc_reader_read_count;
         LOG(WARNING) << "grpc_read_row_count:" << grpc_read_row_count;
 
-        LOG(WARNING) << "total avro_decode_seconds:" << this->avro_decode_microseconds / 1e6;
+        LOG(WARNING) << "total row_decode_seconds:" << this->row_decode_microseconds / 1e6;
         LOG(WARNING) << "total grpc_reader_read_seconds:" << this->grpc_reader_read_microseconds / 1e6;
         LOG(WARNING) << "total grpc_read_row_seconds:" << this->grpc_read_row_microseconds / 1e6;
-        LOG(WARNING) << "total get_next_internal_microseconds:" << this->get_next_internal_microseconds / 1e6;
+        LOG(WARNING) << "total get_next_internal_seconds:" << this->get_next_internal_microseconds / 1e6;
     }
 
     *end_of_sequence = false;
@@ -152,7 +152,7 @@ class BigQueryReaderDatasetIteratorBase : public DatasetIterator<Dataset> {
         ReadRecord(ctx, out_tensors, this->dataset()->selected_fields(),
                    this->dataset()->output_types());
     const auto avro_decode_end = std::chrono::high_resolution_clock::now();
-    this->avro_decode_microseconds += std::chrono::duration_cast<std::chrono::microseconds>( avro_decode_end - avro_decode_start ).count();
+    this->row_decode_microseconds += std::chrono::duration_cast<std::chrono::microseconds>( avro_decode_end - avro_decode_start ).count();
 
     current_row_index_++;
     total_row_index++;
@@ -228,8 +228,8 @@ class BigQueryReaderDatasetIteratorBase : public DatasetIterator<Dataset> {
   int total_row_index = 0;
   int grpc_reader_read_count = 0;
   double grpc_read_row_microseconds = 0;
-  double avro_init_microseconds = 0;
-  double avro_decode_microseconds = 0;
+  double reader_init_microseconds = 0;
+  double row_decode_microseconds = 0;
   double grpc_reader_read_microseconds = 0;
   double get_next_internal_microseconds = 0;
 };
@@ -242,7 +242,7 @@ class BigQueryReaderArrowDatasetIterator
   explicit BigQueryReaderArrowDatasetIterator(
       const typename BigQueryReaderDatasetIteratorBase<Dataset>::Params &params)
       : BigQueryReaderDatasetIteratorBase<Dataset>(params) {
-    VLOG(3) << "created BigQueryReaderArrowDatasetIterator for stream: "
+    LOG(WARNING) << "created BigQueryReaderArrowDatasetIterator for stream: "
             << this->dataset()->stream();
   }
 
@@ -255,13 +255,19 @@ class BigQueryReaderArrowDatasetIterator
       return Status::OK();
     }
 
+    const auto reader_read_start = std::chrono::high_resolution_clock::now();
     this->response_ = absl::make_unique<apiv1beta1::ReadRowsResponse>();
     if (!this->reader_->Read(this->response_.get())) {
       *end_of_sequence = true;
       return GrpcStatusToTfStatus(this->reader_->Finish());
     }
+    const auto reader_read_end = std::chrono::high_resolution_clock::now();
+    this->grpc_reader_read_microseconds += std::chrono::duration_cast<std::chrono::microseconds>(reader_read_end - reader_read_start).count();
+    this->grpc_reader_read_count++;
 
     this->current_row_index_ = 0;
+
+    const auto arrow_init_start = std::chrono::high_resolution_clock::now();
 
     auto buffer_ = std::make_shared<arrow::Buffer>(
         reinterpret_cast<const uint8_t *>(&this->response_->arrow_record_batch()
@@ -277,6 +283,9 @@ class BigQueryReaderArrowDatasetIterator
     if (!arrow_status.ok()) {
       return errors::Internal(arrow_status.ToString());
     }
+
+    const auto arrow_init_end = std::chrono::high_resolution_clock::now();
+    this->reader_init_microseconds += std::chrono::duration_cast<std::chrono::microseconds>( arrow_init_end - arrow_init_start ).count();
 
     VLOG(3) << "got record batch, rows:" << record_batch_->num_rows();
 
@@ -344,7 +353,7 @@ class BigQueryReaderAvroDatasetIterator
   explicit BigQueryReaderAvroDatasetIterator(
       const typename BigQueryReaderDatasetIteratorBase<Dataset>::Params &params)
       : BigQueryReaderDatasetIteratorBase<Dataset>(params) {
-    VLOG(3) << "created BigQueryReaderAvroDatasetIterator for stream: "
+    LOG(WARNING) << "created BigQueryReaderAvroDatasetIterator for stream: "
             << this->dataset()->stream();
   }
 
@@ -383,7 +392,7 @@ class BigQueryReaderAvroDatasetIterator
         absl::make_unique<avro::GenericDatum>(*this->dataset()->avro_schema());
 
     const auto avro_init_end = std::chrono::high_resolution_clock::now();
-    this->avro_init_microseconds += std::chrono::duration_cast<std::chrono::microseconds>( avro_init_end - avro_init_start ).count();
+    this->reader_init_microseconds += std::chrono::duration_cast<std::chrono::microseconds>( avro_init_end - avro_init_start ).count();
 
     return Status::OK();
   }
